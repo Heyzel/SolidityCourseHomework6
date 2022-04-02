@@ -1,0 +1,40 @@
+{
+  "name": "Lottery",
+  "version": "1",
+  "description": "No loss lottery system using DeFi",
+  "main": "index.js",
+  "repository": "https://github.com/Heyzel/SolidityCourseHomework6.git",
+  "scripts": {
+    "build": "hardhat compile",
+    "test": "hardhat test",
+    "test:coverage": "hardhat coverage",
+    "deploy": "",
+    "upgrade": ""
+  },
+  "author": "Heyzel M",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomiclabs/hardhat-ethers": "^2.0.5",
+    "@nomiclabs/hardhat-etherscan": "^3.0.3",
+    "@nomiclabs/hardhat-waffle": "^2.0.2",
+    "@uniswap/v3-periphery": "^1.4.0",
+    "chai": "^4.3.6",
+    "ethereum-waffle": "^3.4.0",
+    "ethers": "^5.5.4",
+    "hardhat": "^2.9.1",
+    "hardhat-deploy": "^0.8.6",
+    "hardhat-deploy-ethers": "^0.3.0-beta.13",
+    "hardhat-gas-trackooor": "^1.0.2",
+    "solidity-coverage": "^0.7.19"
+  },
+  "dependencies": {
+    "@chainlink/contracts": "^0.4.0",
+    "@openzeppelin/contracts": "^4.5.0",
+    "@openzeppelin/contracts-upgradeable": "^4.5.1",
+    "@openzeppelin/hardhat-upgrades": "^1.14.0",
+    "axios": "^0.26.1",
+    "dotenv": "^16.0.0",
+    "paraswap": "^5.1.0"
+  }
+
+}
