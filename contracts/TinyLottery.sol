@@ -4,6 +4,7 @@ pragma solidity >=0.8.3;
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "./RandomNumberConsumer.sol";
 import "./ComptrollerInterface.sol";
 import "./CTokenInterface.sol";
 
@@ -21,6 +22,8 @@ contract TinyLottery is OwnableUpgradeable {
     }
 
     // ========== VARIABLES V1 ========== //
+
+    RandomNumberConsumer random;
 
     ComptrollerInterface comptroller;
 
@@ -59,6 +62,8 @@ contract TinyLottery is OwnableUpgradeable {
 
     uint256 public currentLottery;
 
+    bool public lotteryInCourse;
+
     Lottery[] lotteries;
     mapping(uint256 => User[]) users;
 
@@ -69,7 +74,8 @@ contract TinyLottery is OwnableUpgradeable {
         address _USDC, 
         address _USDT,
         address _cDAI,
-        address _comptroller
+        address _comptroller,
+        address _randomConsumer
         ) external initializer {
         __Ownable_init();
 
@@ -82,16 +88,20 @@ contract TinyLottery is OwnableUpgradeable {
         USDT = IERC20(_USDT);
         cDAI = CTokenInterface(_cDAI);
         comptroller = ComptrollerInterface(_comptroller);
+        random = RandomNumberConsumer(_randomConsumer);
     }
 
-    function createLottery() external {
+    function createLottery() external onlyOwner {
+        require(!lotteryInCourse, "There is a lottery in progress");
         Lottery memory newLottery;
         newLottery.initDate = block.timestamp;
         lotteries.push(newLottery);
         currentLottery = currentLottery.add(1);
+        lotteryInCourse = true;
     }
 
     function buyTickets(string memory _crypto) external {
+        require(lotteryInCourse, "There is no lottery in progress");
         uint256 funds;
         User memory newUser;
         if(_isPurchasePeriod()){
@@ -137,10 +147,54 @@ contract TinyLottery is OwnableUpgradeable {
         }
     }
 
-    function invest() external {
-        require(lotteries[currentLottery].initDate > lotteries[currentLottery].initDate.add(172800), "Cannot invest yet");
+    function invest() external onlyOwner {
+        require(lotteryInCourse, "There is no lottery in progress");
+        require(block.timestamp > lotteries[currentLottery].initDate.add(172800), "Cannot invest yet");
         DAI.approve(address(cDAI), lotteries[currentLottery].funds);
         cDAI.mint(lotteries[currentLottery].funds);
+    }
+
+    function chooseWinner() external onlyOwner {
+        require(lotteryInCourse, "There is no lottery in progress");
+        require(block.timestamp > lotteries[currentLottery].initDate.add(604800), "Cannot choose a winner yet");
+        User[] memory _users = users[currentLottery];
+        Lottery memory _lottery = lotteries[currentLottery];
+        uint256 totalFunds = cDAI.balanceOf(address(this));
+        cDAI.redeem(totalFunds);
+        uint256 interestEarned = totalFunds.sub(_lottery.funds);
+        uint256 winnerTicket = random.randomResult().mod(_lottery.funds).add(1); // The winning ticket is between 1 and the number of funds
+        uint256 lowerLimit = 1;
+        uint256 upperLimit = _users[0].funds;
+        address winner;
+        for(uint256 i = 0; i < _users.length; i++){
+            if(winnerTicket >= lowerLimit && winnerTicket <= upperLimit){
+                winner = _users[i].addr;
+                break;
+            }
+            upperLimit = upperLimit.add(_users[i].funds);
+            lowerLimit = lowerLimit.add(_users[i].funds);
+        }
+        DAI.transferFrom(address(this), winner, interestEarned*(100 - fee)/100);
+        DAI.transferFrom(address(this), feeRecipient, interestEarned*fee/100);
+
+    }
+
+
+
+    /**
+    * @notice Update the recipient of the commissions
+    * @dev Only the owner is able to change the recipient
+    */
+    function setRecipient(address _addr) external onlyOwner {
+        feeRecipient = _addr;
+    }
+
+    /**
+    * @notice Update the fee of the sales
+    * @dev Only the owner is able to change the fee
+    */
+    function setFee(uint8 _fee) external onlyOwner {
+        fee = _fee;
     }
 
     function _isPurchasePeriod() internal view returns(bool) {
