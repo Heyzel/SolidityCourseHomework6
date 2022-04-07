@@ -176,10 +176,15 @@ contract TinyLottery is OwnableUpgradeable {
         }
         DAI.transferFrom(address(this), winner, interestEarned*(100 - fee)/100);
         DAI.transferFrom(address(this), feeRecipient, interestEarned*fee/100);
-
+        lotteryInCourse = false;
+        currentLottery = currentLottery.add(1);
     }
 
-
+    function claimTokens(uint256 lotteryID, uint256 userID) external {
+        require(lotteryID < currentLottery, "Invalid lottery");
+        require(users[lotteryID][userID].addr == msg.sender, "Only the user can claim theirs tokens");
+        DAI.transferFrom(address(this), msg.sender, users[lotteryID][userID].funds);
+    }
 
     /**
     * @notice Update the recipient of the commissions
