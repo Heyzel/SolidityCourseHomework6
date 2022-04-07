@@ -4,6 +4,8 @@ pragma solidity >=0.8.3;
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "./ComptrollerInterface.sol";
+import "./CTokenInterface.sol";
 
 contract TinyLottery is OwnableUpgradeable {
     using SafeMath for uint256;
@@ -14,14 +16,19 @@ contract TinyLottery is OwnableUpgradeable {
     }
 
     struct Lottery {
-        address token;
-        uint256 price;
         uint256 funds;
         uint256 initDate;
-        uint256 interestEarned;
     }
 
     // ========== VARIABLES V1 ========== //
+
+    ComptrollerInterface comptroller;
+
+    /**
+    * Network: Mainnet
+    * Address: 
+    */
+    CTokenInterface cDAI;
 
     /**
     * Network: Mainnet
@@ -50,17 +57,19 @@ contract TinyLottery is OwnableUpgradeable {
     // fee charged, initialized in 0.1%
     uint16 public fee;
 
-    uint64 public currentLottery;
+    uint256 public currentLottery;
 
     Lottery[] lotteries;
-    mapping(uint64 => User[]) users;
+    mapping(uint256 => User[]) users;
 
     function initialize(
         address _feeRecipient, 
         uint16 _fee, 
-        address DAIAddress, 
-        address USDCAddress, 
-        address USDTAddress
+        address _DAI, 
+        address _USDC, 
+        address _USDT,
+        address _cDAI,
+        address _comptroller
         ) external initializer {
         __Ownable_init();
 
@@ -68,34 +77,31 @@ contract TinyLottery is OwnableUpgradeable {
         require(_fee > 0);
         feeRecipient = _feeRecipient;
         fee = _fee;
-        DAI = IERC20(DAIAddress);
-        USDC = IERC20(USDCAddress);
-        USDT = IERC20(USDTAddress);
+        DAI = IERC20(_DAI);
+        USDC = IERC20(_USDC);
+        USDT = IERC20(_USDT);
+        cDAI = CTokenInterface(_cDAI);
+        comptroller = ComptrollerInterface(_comptroller);
     }
 
-    function createLottery(address token, uint256 price, User[] memory _laggardUsers) external {
+    function createLottery() external {
         Lottery memory newLottery;
-        newLottery.token = token;
-        newLottery.price = price;
         newLottery.initDate = block.timestamp;
         lotteries.push(newLottery);
-        for (uint64 i = 0; i < _laggardUsers.length; i++){
-            User memory newUser;
-            newUser.addr = _laggardUsers[i].addr;
-            newUser.funds = _laggardUsers[i].funds;
-            users[currentLottery].push(newUser);
-        }
+        currentLottery = currentLottery.add(1);
     }
 
-    function buyTickets(string memory _crypto) public {
+    function buyTickets(string memory _crypto) external {
         uint256 funds;
         User memory newUser;
-        if(isPurchasePeriod()){
+        if(_isPurchasePeriod()){
             if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("DAI"))){
                 funds = DAI.allowance(msg.sender, address(this));
+                DAI.transferFrom(msg.sender, address(this), funds);
                 newUser.addr = msg.sender;
                 newUser.funds = funds;
                 users[currentLottery].push(newUser);
+                lotteries[currentLottery].funds = lotteries[currentLottery].funds.add(funds);
                 
             }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("USDC"))){
                 // swap()
@@ -111,9 +117,11 @@ contract TinyLottery is OwnableUpgradeable {
         }else{
              if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("DAI"))){
                 funds = DAI.allowance(msg.sender, address(this));
+                DAI.transferFrom(msg.sender, address(this), funds);
                 newUser.addr = msg.sender;
                 newUser.funds = funds;
                 users[currentLottery+1].push(newUser);
+                lotteries[currentLottery+1].funds = lotteries[currentLottery+1].funds.add(funds);
 
             }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("USDC"))){
                 // swap()
@@ -122,15 +130,21 @@ contract TinyLottery is OwnableUpgradeable {
             }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("USDT"))){
                 // swap()
 
-                
+
             }else{
                 revert("That Token is not accepted in this lottery");
             }
         }
     }
 
-    function isPurchasePeriod() internal view returns(bool) {
-        if(lotteries[currentLottery].initDate + 172800 > block.timestamp){
+    function invest() external {
+        require(lotteries[currentLottery].initDate > lotteries[currentLottery].initDate.add(172800), "Cannot invest yet");
+        DAI.approve(address(cDAI), lotteries[currentLottery].funds);
+        cDAI.mint(lotteries[currentLottery].funds);
+    }
+
+    function _isPurchasePeriod() internal view returns(bool) {
+        if(lotteries[currentLottery].initDate.add(172800) > block.timestamp){
             return true;
         }else{
             return false;
