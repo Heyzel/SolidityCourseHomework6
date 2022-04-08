@@ -12,6 +12,17 @@ import "./CTokenInterface.sol";
 contract TinyLottery is OwnableUpgradeable {
     using SafeMath for uint256;
 
+    /**
+    * @notice Event to notify the tokens received for the amount given
+    */
+    event TicketsBought(uint amount, uint lotteryID, uint userID, address user);
+
+    event FundsInvested(uint amount);
+
+    event Winner(uint amount, uint ticket, address user);
+
+    event TokensClaimed(uint amount, uint lotteryID);
+
     struct User {
         address addr;
         uint256 funds;
@@ -128,6 +139,7 @@ contract TinyLottery is OwnableUpgradeable {
             newUser.funds = funds;
             users[currentLottery + aux].push(newUser);
             lotteries[currentLottery + aux].funds = lotteries[currentLottery + aux].funds.add(funds);
+            emit TicketsBought(funds, (currentLottery + aux), users[currentLottery + aux].length, msg.sender);
         }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("ETH"))){
             require(msg.value > 0, "Insufficient ETH");
             uint amount; uint amountOut;
@@ -153,6 +165,7 @@ contract TinyLottery is OwnableUpgradeable {
             newUser.funds = funds;
             users[currentLottery + aux].push(newUser);
             lotteries[currentLottery + aux].funds = lotteries[currentLottery + aux].funds.add(funds);
+            emit TicketsBought(funds, (currentLottery + aux), users[currentLottery + aux].length, msg.sender);
 
         }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("USDC"))){
             funds = USDC.allowance(msg.sender, address(this));
@@ -165,6 +178,7 @@ contract TinyLottery is OwnableUpgradeable {
             newUser.funds = result.div(10**18).mul(10**18);
             users[currentLottery + aux].push(newUser);
             lotteries[currentLottery + aux].funds = lotteries[currentLottery + aux].funds.add(newUser.funds);
+            emit TicketsBought(funds, (currentLottery + aux), users[currentLottery + aux].length, msg.sender);
             
         }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("USDT"))){
             funds = USDT.allowance(msg.sender, address(this));
@@ -177,6 +191,7 @@ contract TinyLottery is OwnableUpgradeable {
             newUser.funds = result.div(10**18).mul(10**18);
             users[currentLottery + aux].push(newUser);
             lotteries[currentLottery + aux].funds = lotteries[currentLottery + aux].funds.add(newUser.funds);
+            emit TicketsBought(funds, (currentLottery + aux), users[currentLottery + aux].length, msg.sender);
 
         }else{
             revert("That Token is not accepted in this lottery");
@@ -189,6 +204,7 @@ contract TinyLottery is OwnableUpgradeable {
         require(block.timestamp > lotteries[currentLottery].initDate.add(172800), "Cannot invest yet");
         DAI.approve(address(cDAI), lotteries[currentLottery].funds);
         cDAI.mint(lotteries[currentLottery].funds);
+        emit FundsInvested(cDAI.balanceOf(address(this)));
     }
 
     function chooseWinner() external onlyOwner {
@@ -211,6 +227,7 @@ contract TinyLottery is OwnableUpgradeable {
             upperLimit = upperLimit.add(_users[i].funds);
             lowerLimit = lowerLimit.add(_users[i].funds);
         }
+        emit Winner((interestEarned*(100 - fee)/100), winnerTicket, winner);
         DAI.transferFrom(address(this), winner, interestEarned*(100 - fee)/100);
         DAI.transferFrom(address(this), feeRecipient, interestEarned*fee/100);
         lotteryInCourse = false;
@@ -221,6 +238,7 @@ contract TinyLottery is OwnableUpgradeable {
         require(lotteryID < currentLottery, "Invalid lottery");
         require(users[lotteryID][userID].addr == msg.sender, "Only the user can claim theirs tokens");
         DAI.transferFrom(address(this), msg.sender, users[lotteryID][userID].funds);
+        emit TokensClaimed(users[lotteryID][userID].funds, lotteryID);
     }
 
     /**
