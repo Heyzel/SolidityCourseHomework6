@@ -4,6 +4,8 @@ pragma solidity >=0.8.3;
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import "./CurveInterface.sol";
 import "./RandomNumberConsumer.sol";
 import "./ComptrollerInterface.sol";
 import "./CTokenInterface.sol";
@@ -23,13 +25,24 @@ contract TinyLottery is OwnableUpgradeable {
 
     // ========== VARIABLES V1 ========== //
 
+    ISwapRouter public constant swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+    address private constant WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+    /**
+    * Network: Mainnet
+    * Pool: 3pool
+    * Address: 0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7
+    */
+    CurveInterface swapper;
+
     RandomNumberConsumer random;
 
     ComptrollerInterface comptroller;
 
     /**
     * Network: Mainnet
-    * Address: 
+    * Token: cDAI
+    * Address: 0x5d3a536e4d6dbd6114cc1ead35777bab948e3643
     */
     CTokenInterface cDAI;
 
@@ -75,7 +88,8 @@ contract TinyLottery is OwnableUpgradeable {
         address _USDT,
         address _cDAI,
         address _comptroller,
-        address _randomConsumer
+        address _randomConsumer,
+        address _stableSwap
         ) external initializer {
         __Ownable_init();
 
@@ -89,6 +103,7 @@ contract TinyLottery is OwnableUpgradeable {
         cDAI = CTokenInterface(_cDAI);
         comptroller = ComptrollerInterface(_comptroller);
         random = RandomNumberConsumer(_randomConsumer);
+        swapper = CurveInterface(_stableSwap);
     }
 
     function createLottery() external onlyOwner {
@@ -100,51 +115,78 @@ contract TinyLottery is OwnableUpgradeable {
         lotteryInCourse = true;
     }
 
-    function buyTickets(string memory _crypto) external {
+    function buyTickets(string memory _crypto) external payable{
         require(lotteryInCourse, "There is no lottery in progress");
         uint256 funds;
+        uint256 result;
         User memory newUser;
+        uint aux;
         if(_isPurchasePeriod()){
-            if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("DAI"))){
-                funds = DAI.allowance(msg.sender, address(this));
-                DAI.transferFrom(msg.sender, address(this), funds);
-                newUser.addr = msg.sender;
-                newUser.funds = funds;
-                users[currentLottery].push(newUser);
-                lotteries[currentLottery].funds = lotteries[currentLottery].funds.add(funds);
-                
-            }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("USDC"))){
-                // swap()
-
-                
-            }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("USDT"))){
-                // swap()
-
-
-            }else{
-                revert("That Token is not accepted in this lottery");
-            }
-        }else{
-             if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("DAI"))){
-                funds = DAI.allowance(msg.sender, address(this));
-                DAI.transferFrom(msg.sender, address(this), funds);
-                newUser.addr = msg.sender;
-                newUser.funds = funds;
-                users[currentLottery+1].push(newUser);
-                lotteries[currentLottery+1].funds = lotteries[currentLottery+1].funds.add(funds);
-
-            }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("USDC"))){
-                // swap()
-
-
-            }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("USDT"))){
-                // swap()
-
-
-            }else{
-                revert("That Token is not accepted in this lottery");
-            }
+            aux = 1;
         }
+        if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("DAI"))){
+            funds = DAI.allowance(msg.sender, address(this));
+            require(funds > 0, "DAI Insufficient");
+            funds = funds.div(10**18).mul(10**18);
+            DAI.transferFrom(msg.sender, address(this), funds);
+            newUser.addr = msg.sender;
+            newUser.funds = funds;
+            users[currentLottery + aux].push(newUser);
+            lotteries[currentLottery + aux].funds = lotteries[currentLottery + aux].funds.add(funds);
+        }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("ETH"))){
+            require(msg.value > 0, "Insufficient ETH");
+            uint amount; uint amountOut;
+            ISwapRouter.ExactInputSingleParams memory params = 
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: WETH9,
+                tokenOut: address(DAI),
+                fee: 3000,
+                recipient: msg.sender,
+                deadline: block.timestamp + 1,
+                amountIn: amount,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            });
+
+            amountOut = swapRouter.exactInputSingle{value: amount}(params);
+
+            funds = amountOut.div(10**18).mul(10**18);
+            if(amountOut.sub(funds) > 0){
+                DAI.transferFrom(address(this), msg.sender, amountOut.sub(funds));
+            }
+            newUser.addr = msg.sender;
+            newUser.funds = funds;
+            users[currentLottery + aux].push(newUser);
+            lotteries[currentLottery + aux].funds = lotteries[currentLottery + aux].funds.add(funds);
+
+        }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("USDC"))){
+            funds = USDC.allowance(msg.sender, address(this));
+            require(funds > 0, "USDC Insufficient");
+            funds = funds.div(10**18).mul(10**18);
+            USDC.transferFrom(msg.sender, address(this), funds);
+            result = swapper.get_dy_underlying(1, 0, funds);
+            swapper.exchange_underlying(1, 0, funds, result);
+            newUser.addr = msg.sender;
+            newUser.funds = result.div(10**18).mul(10**18);
+            users[currentLottery + aux].push(newUser);
+            lotteries[currentLottery + aux].funds = lotteries[currentLottery + aux].funds.add(newUser.funds);
+            
+        }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("USDT"))){
+            funds = USDT.allowance(msg.sender, address(this));
+            require(funds > 0, "USDT Insufficient");
+            funds = funds.div(10**18).mul(10**18);
+            USDT.transferFrom(msg.sender, address(this), funds);
+            result = swapper.get_dy_underlying(2, 0, funds);
+            swapper.exchange_underlying(2, 0, funds, result);
+            newUser.addr = msg.sender;
+            newUser.funds = result.div(10**18).mul(10**18);
+            users[currentLottery + aux].push(newUser);
+            lotteries[currentLottery + aux].funds = lotteries[currentLottery + aux].funds.add(newUser.funds);
+
+        }else{
+            revert("That Token is not accepted in this lottery");
+        }
+
     }
 
     function invest() external onlyOwner {
@@ -162,7 +204,7 @@ contract TinyLottery is OwnableUpgradeable {
         uint256 totalFunds = cDAI.balanceOf(address(this));
         cDAI.redeem(totalFunds);
         uint256 interestEarned = totalFunds.sub(_lottery.funds);
-        uint256 winnerTicket = random.randomResult().mod(_lottery.funds).add(1); // The winning ticket is between 1 and the number of funds
+        uint256 winnerTicket = random.randomResult().mod(_lottery.funds).add(1).div(10**18); // The winning ticket is between 1 and the number of funds
         uint256 lowerLimit = 1;
         uint256 upperLimit = _users[0].funds;
         address winner;
