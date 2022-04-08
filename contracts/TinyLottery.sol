@@ -7,7 +7,6 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import "./CurveInterface.sol";
 import "./RandomNumberConsumer.sol";
-import "./ComptrollerInterface.sol";
 import "./CTokenInterface.sol";
 
 contract TinyLottery is OwnableUpgradeable {
@@ -33,18 +32,16 @@ contract TinyLottery is OwnableUpgradeable {
     * Pool: 3pool
     * Address: 0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7
     */
-    CurveInterface swapper;
+    CurveInterface public swapper;
 
-    RandomNumberConsumer random;
-
-    ComptrollerInterface comptroller;
+    RandomNumberConsumer public random;
 
     /**
     * Network: Mainnet
     * Token: cDAI
     * Address: 0x5d3a536e4d6dbd6114cc1ead35777bab948e3643
     */
-    CTokenInterface cDAI;
+    CTokenInterface public cDAI;
 
     /**
     * Network: Mainnet
@@ -87,7 +84,6 @@ contract TinyLottery is OwnableUpgradeable {
         address _USDC, 
         address _USDT,
         address _cDAI,
-        address _comptroller,
         address _randomConsumer,
         address _stableSwap
         ) external initializer {
@@ -101,7 +97,6 @@ contract TinyLottery is OwnableUpgradeable {
         USDC = IERC20(_USDC);
         USDT = IERC20(_USDT);
         cDAI = CTokenInterface(_cDAI);
-        comptroller = ComptrollerInterface(_comptroller);
         random = RandomNumberConsumer(_randomConsumer);
         swapper = CurveInterface(_stableSwap);
     }
