@@ -17,9 +17,10 @@ module.exports = async ({getNamedAccounts, deployments}) => {
     const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
     const USDT = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
     const cDAI = '0x5d3a536e4d6dbd6114cc1ead35777bab948e3643';
-    const stableSwap = '0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7';
+    const stableSwapUSDC = '0xA2B47E3D5c44877cca798226B7B8118F9BFb7A56';
+    const stableSwapUSDT = '0x52EA46506B9CC5Ef470C5bf89f17Dc28bB35D85C';
 
-    const _args = [feeRecipient, fee, DAI, USDC, USDT, cDAI, random.address, stableSwap];
+    const _args = [feeRecipient, fee, DAI, USDC, USDT, cDAI, random.address, stableSwapUSDC, stableSwapUSDT];
 
     await deploy('TinyLottery', {
         from: deployer,

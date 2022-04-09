@@ -1,4 +1,4 @@
-const { expect } = require('chai');
+const { expect, use } = require('chai');
 const { ethers } = require('hardhat');
 const { fixture } = deployments;
 
@@ -136,6 +136,111 @@ describe('TinyLotteryV1 contract', () => {
                 expect(signerBalanceBefore - signerBalance).to.be.lessThanOrEqual(10.00001*10**18);
                 expect(signerBalanceBefore - signerBalance).to.be.greaterThanOrEqual(10.00000*10**18);
             });
+
+            it('Should buy tickets with ETH', async () => {
+                await app.connect(deployerSigner).createLottery();
+
+                const IERC20 = require("../abi/ERC20.json");
+                const dai = await hre.ethers.getContractAt(IERC20, DAI_ADDRESS);
+                
+                const balanceDAIBefore = parseInt(await dai.balanceOf(app.address));
+                const daiBefore = parseInt(await dai.balanceOf(userSigner._address));
+
+                await app.connect(userSigner).buyTickets('ETH', {value: ethers.utils.parseEther("0.01")});
+
+                const daiAfter = parseInt(await dai.balanceOf(userSigner._address));
+                const balanceDAIAfter = parseInt(await dai.balanceOf(app.address));
+                
+                expect(daiAfter).to.be.greaterThan(daiBefore);
+                
+                expect(balanceDAIAfter).to.be.greaterThan(balanceDAIBefore);
+                
+                const currentLottery = await app.currentLottery();
+
+                const Lottery = await app.getLottery(currentLottery);
+                expect(Lottery[0].toString()).to.be.equal(balanceDAIAfter.toString());
+                expect(Lottery[1].toNumber()).to.be.greaterThan(0);
+
+                const User = await app.getUser(currentLottery, 0);
+                expect(User[0]).to.be.equal(userSigner._address);
+                expect(User[1].toString()).to.be.equal(balanceDAIAfter.toString());
+                
+            });
+
+            it('Should buy tickets with USDC', async () => {
+                const toInpersonate = '0xCFFAd3200574698b78f32232aa9D63eABD290703';
+
+                await hre.network.provider.request({
+                    method: "hardhat_impersonateAccount",
+                    params: [toInpersonate],
+                });
+
+                const signerImpersonate = await ethers.getSigner(toInpersonate);
+
+                await app.connect(deployerSigner).createLottery();
+
+                const IERC20 = require("../abi/ERC20.json");
+                const dai = await hre.ethers.getContractAt(IERC20, DAI_ADDRESS);
+                const usdc = await hre.ethers.getContractAt(IERC20, USDC_ADDRESS);
+
+                var balance = parseInt(await dai.balanceOf(app.address));
+                expect(balance).to.be.equal(0);
+
+                const amount = 10*10**6;
+
+                await usdc.connect(signerImpersonate).approve(app.address, amount.toString());
+                
+                await app.connect(signerImpersonate).buyTickets('USDC');
+
+                const Lottery = await app.getLottery(0);
+                expect(parseInt(Lottery[0])).to.be.greaterThanOrEqual((amount-(1*10**18)))
+                expect(Lottery[1].toNumber()).to.be.greaterThanOrEqual(0);
+
+                const User = await app.getUser(0, 0);
+                expect(User[0]).to.be.equal(signerImpersonate.address);
+                expect(parseInt(User[1])).to.be.greaterThanOrEqual((amount-(1*10**18)));
+            });
+
+            it('Should buy tickets with USDT', async () => {
+                const toInpersonate = '0x61F2f664FEc20a2FC1D55409cFc85e1BaeB943e2';
+
+                await hre.network.provider.request({
+                    method: "hardhat_impersonateAccount",
+                    params: [toInpersonate],
+                });
+
+                const signerImpersonate = await ethers.getSigner(toInpersonate);
+
+                await app.connect(deployerSigner).createLottery();
+
+                const IERC20 = require("../abi/ERC20.json");
+                const dai = await hre.ethers.getContractAt(IERC20, DAI_ADDRESS);
+                const usdt = await hre.ethers.getContractAt(IERC20, USDT_ADDRESS);
+
+                var balance = parseInt(await dai.balanceOf(app.address));
+                expect(balance).to.be.equal(0);
+
+                const amount = 10*10**6;
+
+                await usdt.connect(signerImpersonate).approve(app.address, amount.toString());
+                
+                await app.connect(signerImpersonate).buyTickets('USDT');
+
+                const Lottery = await app.getLottery(0);
+                expect(parseInt(Lottery[0])).to.be.greaterThanOrEqual((amount-(1*10**18)))
+                expect(Lottery[1].toNumber()).to.be.greaterThanOrEqual(0);
+
+                const User = await app.getUser(0, 0);
+                expect(User[0]).to.be.equal(signerImpersonate.address);
+                expect(parseInt(User[1])).to.be.greaterThanOrEqual((amount-(1*10**18)));
+            });
+
+            it('Should fail if the crypto is not accepted', async () => {
+                await app.connect(deployerSigner).createLottery();
+
+                await expect(app.connect(userSigner).buyTickets('LINK')).to.be.revertedWith('That Token is not accepted in this lottery');
+            });
+
         });
     });
 });

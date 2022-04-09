@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./CurveInterface.sol";
 import "./RandomNumberConsumer.sol";
 import "./CTokenInterface.sol";
@@ -12,6 +13,7 @@ import "hardhat/console.sol";
 
 contract TinyLottery is OwnableUpgradeable {
     using SafeMath for uint256;
+    using SafeERC20 for IERC20;
 
     /**
     * @notice Event to notify the tokens received for the amount given
@@ -44,7 +46,8 @@ contract TinyLottery is OwnableUpgradeable {
     * Pool: 3pool
     * Address: 0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7
     */
-    CurveInterface public swapper;
+    CurveInterface public USDCswapper;
+    CurveInterface public USDTswapper;
 
     RandomNumberConsumer public random;
 
@@ -97,7 +100,8 @@ contract TinyLottery is OwnableUpgradeable {
         address _USDT,
         address _cDAI,
         address _randomConsumer,
-        address _stableSwap
+        address _stableSwapUSDC,
+        address _stableSwapUSDT
         ) external initializer {
         __Ownable_init();
 
@@ -110,7 +114,8 @@ contract TinyLottery is OwnableUpgradeable {
         USDT = IERC20(_USDT);
         cDAI = CTokenInterface(_cDAI);
         random = RandomNumberConsumer(_randomConsumer);
-        swapper = CurveInterface(_stableSwap);
+        USDCswapper = CurveInterface(_stableSwapUSDC);
+        USDTswapper = CurveInterface(_stableSwapUSDT);
     }
 
     function createLottery() external onlyOwner {
@@ -154,13 +159,13 @@ contract TinyLottery is OwnableUpgradeable {
             emit TicketsBought(funds, (currentLottery + aux), users[currentLottery + aux].length-1, msg.sender);
         }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("ETH"))){
             require(msg.value > 0, "Insufficient ETH");
-            uint amount; uint amountOut;
+            uint amount = msg.value ; uint amountOut;
             ISwapRouter.ExactInputSingleParams memory params = 
             ISwapRouter.ExactInputSingleParams({
                 tokenIn: WETH9,
                 tokenOut: address(DAI),
                 fee: 3000,
-                recipient: msg.sender,
+                recipient: address(this),
                 deadline: block.timestamp + 1,
                 amountIn: amount,
                 amountOutMinimum: 0,
@@ -171,7 +176,7 @@ contract TinyLottery is OwnableUpgradeable {
 
             funds = amountOut.div(10**18).mul(10**18);
             if(amountOut.sub(funds) > 0){
-                DAI.transferFrom(address(this), msg.sender, amountOut.sub(funds));
+                DAI.transfer(msg.sender, amountOut.sub(funds));
             }
             newUser.addr = msg.sender;
             newUser.funds = funds;
@@ -182,10 +187,10 @@ contract TinyLottery is OwnableUpgradeable {
         }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("USDC"))){
             funds = USDC.allowance(msg.sender, address(this));
             require(funds > 0, "USDC Insufficient");
-            funds = funds.div(10**18).mul(10**18);
             USDC.transferFrom(msg.sender, address(this), funds);
-            result = swapper.get_dy_underlying(1, 0, funds);
-            swapper.exchange_underlying(1, 0, funds, result);
+            result = USDCswapper.get_dy_underlying(1, 0, funds);
+            USDC.approve(address(USDCswapper),funds);
+            USDCswapper.exchange_underlying(1, 0, funds, result.div(10**9).mul(10**9));
             newUser.addr = msg.sender;
             newUser.funds = result.div(10**18).mul(10**18);
             users[currentLottery + aux].push(newUser);
@@ -195,10 +200,10 @@ contract TinyLottery is OwnableUpgradeable {
         }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("USDT"))){
             funds = USDT.allowance(msg.sender, address(this));
             require(funds > 0, "USDT Insufficient");
-            funds = funds.div(10**18).mul(10**18);
-            USDT.transferFrom(msg.sender, address(this), funds);
-            result = swapper.get_dy_underlying(2, 0, funds);
-            swapper.exchange_underlying(2, 0, funds, result);
+            USDT.safeTransferFrom(msg.sender, address(this), funds);
+            result = USDTswapper.get_dy_underlying(2, 0, funds);
+            USDT.safeApprove(address(USDTswapper), funds);
+            USDTswapper.exchange_underlying(2, 0, funds, result.div(10**9).mul(10**9));
             newUser.addr = msg.sender;
             newUser.funds = result.div(10**18).mul(10**18);
             users[currentLottery + aux].push(newUser);
@@ -225,8 +230,10 @@ contract TinyLottery is OwnableUpgradeable {
         User[] memory _users = users[currentLottery];
         Lottery memory _lottery = lotteries[currentLottery];
         uint256 totalFunds = cDAI.balanceOf(address(this));
+        uint256 DAIBalance = DAI.balanceOf(address(this));
         cDAI.redeem(totalFunds);
-        uint256 interestEarned = totalFunds.sub(_lottery.funds);
+        uint256 newDAIBalance = DAI.balanceOf(address(this));
+        uint256 interestEarned = newDAIBalance.sub(DAIBalance);
         uint256 winnerTicket = random.randomResult().mod(_lottery.funds).add(1).div(10**18); // The winning ticket is between 1 and the number of funds
         uint256 lowerLimit = 1;
         uint256 upperLimit = _users[0].funds;
