@@ -33,7 +33,7 @@ module.exports = {
   },
   namedAccounts: {
     deployer: '0x0D4f1ff895D12c34994D6B65FaBBeEFDc1a9fb39',
-    feeRecipient: 1,
+    feeRecipient: '0x0D4f1ff895D12c34994D6B65FaBBeEFDc1a9fb39',
     user: 2,
     user2: 3,
     user3: 4,
@@ -41,5 +41,5 @@ module.exports = {
   paths:{
     deploy: 'deploy',
     deployments: 'deployments',
-  }
+  },
 };

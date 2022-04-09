@@ -4,9 +4,18 @@ module.exports = async ({getNamedAccounts, deployments}) => {
     const { deploy } = deployments;
     const { deployer } = await getNamedAccounts();
 
+    const LINK = '0x514910771AF9Ca656af840dff83E8264EcF986CA';
+
+    const mock = await deploy('VRFCoordinatorMock', {
+        from: deployer,
+        log: true,
+        args: [LINK],
+    });
+
     const random = await deploy('RandomNumberConsumer', {
         from: deployer,
         log: true,
+        args: [mock.address, LINK],
     });
 
     console.log('success');

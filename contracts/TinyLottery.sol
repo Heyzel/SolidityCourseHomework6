@@ -234,7 +234,7 @@ contract TinyLottery is OwnableUpgradeable {
         cDAI.redeem(totalFunds);
         uint256 newDAIBalance = DAI.balanceOf(address(this));
         uint256 interestEarned = newDAIBalance.sub(DAIBalance);
-        uint256 winnerTicket = random.randomResult().mod(_lottery.funds).add(1).div(10**18); // The winning ticket is between 1 and the number of funds
+        uint256 winnerTicket = random.randomResult().mod(_lottery.funds).add(1); // The winning ticket is between 1 and the number of funds
         uint256 lowerLimit = 1;
         uint256 upperLimit = _users[0].funds;
         address winner;

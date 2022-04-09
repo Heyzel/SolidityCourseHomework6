@@ -6,6 +6,7 @@ const DAI_ADDRESS = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 const USDC_ADDRESS = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDT_ADDRESS = "0xdac17f958d2ee523a2206206994597c13d831ec7";
 const cDAI_ADDRESS = "0x5d3a536e4d6dbd6114cc1ead35777bab948e3643";
+const LINK_ADDRESS = "0x514910771AF9Ca656af840dff83E8264EcF986CA";
 
 describe('TinyLotteryV1 contract', () => {
     beforeEach(async function(){
@@ -20,6 +21,8 @@ describe('TinyLotteryV1 contract', () => {
         // Deploy
         await fixture(["LotteryV1"]);
         app = await ethers.getContract("TinyLottery");
+        random = await ethers.getContract("RandomNumberConsumer");
+        mock = await ethers.getContract("VRFCoordinatorMock");
     });
 
     describe('Deployment', () => {
@@ -244,7 +247,7 @@ describe('TinyLotteryV1 contract', () => {
 
         });
 
-        describe('Test for invest', () => {
+        describe('Tests for invest', () => {
             it('Should fail if no lottery in progress', async () => {
                 await expect(app.connect(deployerSigner).invest()).to.be.revertedWith("There is no lottery in progress");
             });
@@ -259,7 +262,7 @@ describe('TinyLotteryV1 contract', () => {
                 await app.connect(userSigner).buyTickets('ETH', {value: ethers.utils.parseEther("0.01")});
                 const Lottery = await app.getLottery(0);
                 const startTime = parseInt(Lottery[1]);
-                await ethers.provider.send("evm_mine", [startTime + 172900]);
+                await ethers.provider.send("evm_mine", [startTime + 172901]);
                 await app.connect(deployerSigner).invest();
 
                 const IERC20 = require("../abi/ERC20.json");
@@ -268,6 +271,61 @@ describe('TinyLotteryV1 contract', () => {
                 const balance = parseInt(await cdai.balanceOf(app.address));
                 expect(balance).to.be.greaterThan(0);
             });
-        })
+        });
+
+        describe('Tests for chooseWinner', () => {
+            it('Should fail if no lottery in progress', async () => {
+                await expect(app.connect(deployerSigner).chooseWinner()).to.be.revertedWith("There is no lottery in progress");
+            });
+
+            it('Should fail if seven days have not passed since the lottery started', async () => {
+                await app.connect(deployerSigner).createLottery();
+                await expect(app.connect(deployerSigner).chooseWinner()).to.be.revertedWith("Cannot choose a winner yet");
+            });
+
+            it('Should choose a winner for the lottery using a random number from chainlink. Should transfer tokens to the winner and release the user tokens', async () => {
+                await app.connect(deployerSigner).createLottery();
+
+                await app.connect(userSigner).buyTickets('ETH', {value: ethers.utils.parseEther("0.01")});
+                await app.connect(user2Signer).buyTickets('ETH', {value: ethers.utils.parseEther("0.01")});
+                await app.connect(user3Signer).buyTickets('ETH', {value: ethers.utils.parseEther("0.01")});
+
+                const Lottery = await app.getLottery(0);
+                const startTime = parseInt(Lottery[1]);
+                await ethers.provider.send("evm_mine", [startTime + 172901]);
+                await app.connect(deployerSigner).invest();
+
+                await ethers.provider.send("evm_mine", [startTime + 604801]);
+
+                const IERC20 = require("../abi/ERC20.json");
+                const link = await hre.ethers.getContractAt(IERC20, LINK_ADDRESS);
+                const dai = await hre.ethers.getContractAt(IERC20, DAI_ADDRESS);
+
+                const amount = 100*10**18;
+                await link.connect(deployerSigner).transfer(random.address, amount.toString());
+
+                await random.connect(deployerSigner).getRandomNumber();
+
+                const winnerBalanceBefore = parseInt(await dai.balanceOf(userSigner._address));
+                const recipientBalanceBefore = parseInt(await dai.balanceOf(feeRecipientSigner._address));
+
+                await app.connect(deployerSigner).chooseWinner();
+
+                const winnerBalanceAfter = parseInt(await dai.balanceOf(userSigner._address));
+                const recipientBalanceAfter = parseInt(await dai.balanceOf(feeRecipientSigner._address));
+
+                expect(winnerBalanceAfter).to.be.greaterThan(winnerBalanceBefore);
+                expect(recipientBalanceAfter).to.be.greaterThan(recipientBalanceBefore);
+
+            });
+        });
+        
+        describe('Tests for claimTokens', () => {
+            it('Should fail if use an invalid ID or try to claim tokens of a lottery in progress', async () => {
+                await app.connect(deployerSigner).createLottery();
+                await expect(app.connect(deployerSigner).claimTokens(1, 0)).to.be.revertedWith("Invalid lottery");
+                await expect(app.connect(deployerSigner).claimTokens(0, 0)).to.be.revertedWith("Invalid lottery");
+            });
+        });
     });
 });
