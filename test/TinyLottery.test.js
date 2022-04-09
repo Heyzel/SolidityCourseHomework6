@@ -5,6 +5,7 @@ const { fixture } = deployments;
 const DAI_ADDRESS = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 const USDC_ADDRESS = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const USDT_ADDRESS = "0xdac17f958d2ee523a2206206994597c13d831ec7";
+const cDAI_ADDRESS = "0x5d3a536e4d6dbd6114cc1ead35777bab948e3643";
 
 describe('TinyLotteryV1 contract', () => {
     beforeEach(async function(){
@@ -242,5 +243,31 @@ describe('TinyLotteryV1 contract', () => {
             });
 
         });
+
+        describe('Test for invest', () => {
+            it('Should fail if no lottery in progress', async () => {
+                await expect(app.connect(deployerSigner).invest()).to.be.revertedWith("There is no lottery in progress");
+            });
+
+            it('Should fail if two days have not passed since the lottery started', async () => {
+                await app.connect(deployerSigner).createLottery();
+                await expect(app.connect(deployerSigner).invest()).to.be.revertedWith("Cannot invest yet");
+            });
+
+            it('Should invest the tokens in the lottery and mint cDAI tokens', async () => {
+                await app.connect(deployerSigner).createLottery();
+                await app.connect(userSigner).buyTickets('ETH', {value: ethers.utils.parseEther("0.01")});
+                const Lottery = await app.getLottery(0);
+                const startTime = parseInt(Lottery[1]);
+                await ethers.provider.send("evm_mine", [startTime + 172900]);
+                await app.connect(deployerSigner).invest();
+
+                const IERC20 = require("../abi/ERC20.json");
+                const cdai = await hre.ethers.getContractAt(IERC20, cDAI_ADDRESS);
+
+                const balance = parseInt(await cdai.balanceOf(app.address));
+                expect(balance).to.be.greaterThan(0);
+            });
+        })
     });
 });
