@@ -306,12 +306,12 @@ describe('TinyLotteryV1 contract', () => {
 
                 await random.connect(deployerSigner).getRandomNumber();
 
-                const winnerBalanceBefore = parseInt(await dai.balanceOf(userSigner._address));
+                const winnerBalanceBefore = parseInt(await dai.balanceOf(user2Signer._address));
                 const recipientBalanceBefore = parseInt(await dai.balanceOf(feeRecipientSigner._address));
 
                 await app.connect(deployerSigner).chooseWinner();
 
-                const winnerBalanceAfter = parseInt(await dai.balanceOf(userSigner._address));
+                const winnerBalanceAfter = parseInt(await dai.balanceOf(user2Signer._address));
                 const recipientBalanceAfter = parseInt(await dai.balanceOf(feeRecipientSigner._address));
 
                 expect(winnerBalanceAfter).to.be.greaterThan(winnerBalanceBefore);
@@ -321,10 +321,72 @@ describe('TinyLotteryV1 contract', () => {
         });
         
         describe('Tests for claimTokens', () => {
-            it('Should fail if use an invalid ID or try to claim tokens of a lottery in progress', async () => {
+            it('Should fail if use an invalid ID for lottery or try to claim tokens of a lottery in progress', async () => {
                 await app.connect(deployerSigner).createLottery();
                 await expect(app.connect(deployerSigner).claimTokens(1, 0)).to.be.revertedWith("Invalid lottery");
                 await expect(app.connect(deployerSigner).claimTokens(0, 0)).to.be.revertedWith("Invalid lottery");
+            });
+
+            it('Should fail if a user try to claim tokens of other user', async () => {
+                await app.connect(deployerSigner).createLottery();
+
+                await app.connect(userSigner).buyTickets('ETH', {value: ethers.utils.parseEther("0.01")});
+                await app.connect(user2Signer).buyTickets('ETH', {value: ethers.utils.parseEther("0.01")});
+                await app.connect(user3Signer).buyTickets('ETH', {value: ethers.utils.parseEther("0.01")});
+
+                const Lottery = await app.getLottery(0);
+                const startTime = parseInt(Lottery[1]);
+                await ethers.provider.send("evm_mine", [startTime + 172901]);
+                await app.connect(deployerSigner).invest();
+
+                await ethers.provider.send("evm_mine", [startTime + 604801]);
+
+                const IERC20 = require("../abi/ERC20.json");
+                const link = await hre.ethers.getContractAt(IERC20, LINK_ADDRESS);
+
+                const amount = 100*10**18;
+                await link.connect(deployerSigner).transfer(random.address, amount.toString());
+
+                await random.connect(deployerSigner).getRandomNumber();
+
+                await app.connect(deployerSigner).chooseWinner();
+
+                await expect(app.connect(userSigner).claimTokens(0, 1)).to.be.revertedWith("Only the user can claim theirs tokens");
+
+            });
+
+            it('The user claim theirs token', async () => {
+                await app.connect(deployerSigner).createLottery();
+
+                await app.connect(userSigner).buyTickets('ETH', {value: ethers.utils.parseEther("0.01")});
+                await app.connect(user2Signer).buyTickets('ETH', {value: ethers.utils.parseEther("0.01")});
+                await app.connect(user3Signer).buyTickets('ETH', {value: ethers.utils.parseEther("0.01")});
+
+                const Lottery = await app.getLottery(0);
+                const startTime = parseInt(Lottery[1]);
+                await ethers.provider.send("evm_mine", [startTime + 172901]);
+                await app.connect(deployerSigner).invest();
+
+                await ethers.provider.send("evm_mine", [startTime + 604801]);
+
+                const IERC20 = require("../abi/ERC20.json");
+                const link = await hre.ethers.getContractAt(IERC20, LINK_ADDRESS);
+                const dai = await hre.ethers.getContractAt(IERC20, DAI_ADDRESS);
+
+                const amount = 100*10**18;
+                await link.connect(deployerSigner).transfer(random.address, amount.toString());
+
+                await random.connect(deployerSigner).getRandomNumber();
+
+                await app.connect(deployerSigner).chooseWinner();
+
+                const balanceBefore = parseInt(await dai.balanceOf(userSigner._address));
+
+                await app.connect(userSigner).claimTokens(0, 0);
+
+                const balanceAfter = parseInt(await dai.balanceOf(userSigner._address));
+
+                expect(balanceAfter).to.be.greaterThan(balanceBefore);
             });
         });
     });

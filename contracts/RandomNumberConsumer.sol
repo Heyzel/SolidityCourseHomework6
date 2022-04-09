@@ -35,7 +35,7 @@ contract RandomNumberConsumer is VRFConsumerBase {
     function getRandomNumber() public returns (bytes32 requestId) {
         require(LINK.balanceOf(address(this)) >= fee, "Not enough LINK - fill contract with faucet");
         requestId = requestRandomness(keyHash, fee);
-        VRFCoordinatorMock(vrfCoordinator).callBackWithRandomness(requestId, 123123, address(this));
+        VRFCoordinatorMock(vrfCoordinator).callBackWithRandomness(requestId, 35000000000000000000, address(this));
         return requestId;
     }
 
