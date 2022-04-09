@@ -171,6 +171,40 @@ describe('TinyLotteryV1 contract', () => {
                 
             });
 
+            it('Should buy tickets with ETH but participate in the next week lottery', async () => {
+                await app.connect(deployerSigner).createLottery();
+                const currentLottery = await app.currentLottery();
+                var Lottery = await app.getLottery(currentLottery);
+                const startTime = parseInt(Lottery[1]);
+                await ethers.provider.send("evm_mine", [startTime + 172901]);
+
+                const IERC20 = require("../abi/ERC20.json");
+                const dai = await hre.ethers.getContractAt(IERC20, DAI_ADDRESS);
+                
+                const balanceDAIBefore = parseInt(await dai.balanceOf(app.address));
+                const daiBefore = parseInt(await dai.balanceOf(userSigner._address));
+
+                await app.connect(userSigner).buyTickets('ETH', {value: ethers.utils.parseEther("0.01")});
+
+                const daiAfter = parseInt(await dai.balanceOf(userSigner._address));
+                const balanceDAIAfter = parseInt(await dai.balanceOf(app.address));
+                
+                expect(daiAfter).to.be.greaterThan(daiBefore);
+                
+                expect(balanceDAIAfter).to.be.greaterThan(balanceDAIBefore);
+                
+                Lottery = await app.getLottery(currentLottery+1);
+
+                expect(Lottery[0].toString()).to.be.equal(balanceDAIAfter.toString());
+                expect(Lottery[1].toNumber()).to.be.greaterThan(0);
+
+                const User = await app.getUser(currentLottery+1, 0);
+                expect(User[0]).to.be.equal(userSigner._address);
+                expect(User[1].toString()).to.be.equal(balanceDAIAfter.toString());
+                
+            });
+
+
             it('Should buy tickets with USDC', async () => {
                 const toInpersonate = '0xCFFAd3200574698b78f32232aa9D63eABD290703';
 
@@ -387,6 +421,8 @@ describe('TinyLotteryV1 contract', () => {
                 const balanceAfter = parseInt(await dai.balanceOf(userSigner._address));
 
                 expect(balanceAfter).to.be.greaterThan(balanceBefore);
+
+                await app.connect(deployerSigner).createLottery();
             });
         });
     });

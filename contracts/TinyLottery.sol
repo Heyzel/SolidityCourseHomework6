@@ -285,12 +285,12 @@ contract TinyLottery is OwnableUpgradeable {
     // GETTERS
     
     function getLottery(uint lotteryID) external view returns(Lottery memory) {
-        require(lotteryID <= currentLottery, "Invalid lottery ID");
+        require(lotteryID <= currentLottery+1, "Invalid lottery ID");
         return lotteries[lotteryID];
     }
 
     function getUser(uint lotteryID, uint userID) external view returns(User memory){
-        require(lotteryID <= currentLottery, "Invalid lottery ID");
+        require(lotteryID <= currentLottery+1, "Invalid lottery ID");
         require(userID < users[lotteryID].length, "Invalid user ID");
         return users[lotteryID][userID];
     }
