@@ -10,8 +10,8 @@
     "build": "hardhat compile",
     "test": "hardhat test",
     "test:coverage": "hardhat coverage",
-    "local:deploy": "hardhat deploy --tags Example --network hardhat",
-    "upgrade": "hardhat deploy --tags TinyLotteryV2"
+    "local:deploy": "hardhat deploy --tags LotteryV1 --network hardhat",
+    "upgrade": "hardhat deploy --tags LotteryV2 --network hardhat" 
   },
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.0.5",

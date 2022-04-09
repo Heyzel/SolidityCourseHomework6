@@ -16,14 +16,23 @@ contract TinyLottery is OwnableUpgradeable {
     using SafeERC20 for IERC20;
 
     /**
-    * @notice Event to notify the tokens received for the amount given
+    * @notice Event to notify the tickets boughts for the amount given
     */
     event TicketsBought(uint amount, uint lotteryID, uint userID, address user);
 
+    /**
+    * @notice Event to notify the funds investeds in the pool
+    */
     event FundsInvested(uint amount);
 
+    /**
+    * @notice Event to notify how much is the reward, who is the winner and which is the winner ticket
+    */
     event Winner(uint amount, uint ticket, address user);
 
+    /**
+    * @notice Event to notify that the tokens has been claimeds
+    */
     event TokensClaimed(uint amount, uint lotteryID);
 
     struct User {
@@ -43,12 +52,22 @@ contract TinyLottery is OwnableUpgradeable {
 
     /**
     * Network: Mainnet
-    * Pool: 3pool
-    * Address: 0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7
+    * Pool: USDC
+    * Address: 0xA2B47E3D5c44877cca798226B7B8118F9BFb7A56'
     */
     CurveInterface public USDCswapper;
+
+    /**
+    * Network: Mainnet
+    * Pool: USDT
+    * Address: 0x52EA46506B9CC5Ef470C5bf89f17Dc28bB35D85C'
+    */
     CurveInterface public USDTswapper;
 
+    /**
+    * Contract for access to the random number from chainlink
+    * Key Hash: 0x8af398995b04c28e9951adb9721ef74c74f93e6a478f39e7e0777be13527e7ef
+    */
     RandomNumberConsumer public random;
 
     /**
@@ -79,17 +98,38 @@ contract TinyLottery is OwnableUpgradeable {
     */
     IERC20 public USDT;
 
-    // Receives `fee` of the total ETH used for swaps   
+    /** 
+    * Receives `fee` of the total ETH used for swaps
+    */    
     address public feeRecipient;
 
-    // fee charged, initialized in 0.1%
+    /**
+    * fee charged, initialized in 0.1%
+    */ 
     uint16 public fee;
 
+    /**
+    * @dev Control variable for manage access to lotteries
+    */
     uint256 public currentLottery;
-
+    
+    /**
+    * @dev Control variable for manage the creations of new lotteries and claim tokens
+    */
     bool public lotteryInCourse;
 
+    /**
+    * @dev In the `currentLottery` position of this array is holded the current
+    * lottery and store the time when was created and the funds. Also, in the `currentLottery + 1`
+    * position is stored the next week lottery
+    */
     Lottery[] lotteries;
+
+    /**
+    * @dev Similar as the lotteries, the `currentLottery` position hold an array of users for the
+    * current lottery and store his funds for the lottery and his address. Also, in the 
+    * `currentLottery + 1` position is stored the participants of the next week lottery
+    */
     mapping(uint256 => User[]) users;
 
     function initialize(
@@ -118,6 +158,13 @@ contract TinyLottery is OwnableUpgradeable {
         USDTswapper = CurveInterface(_stableSwapUSDT);
     }
 
+    /**
+    * @notice This function create lotteries and stores it in `lotteries`
+    * @dev In case there are no lotteries created, this function create two lotteries.
+    * The first one for the current week and the second one for the next week.
+    * In case there are lotteries created, just create one lottery for the next week
+    * and set the control variables for use the next lottery as the current lottery
+    */
     function createLottery() external onlyOwner {
         require(!lotteryInCourse, "There is a lottery in progress");
         if(lotteries.length == 0){
@@ -138,6 +185,14 @@ contract TinyLottery is OwnableUpgradeable {
         }
     }
 
+    /**
+    * @notice Buy tickets for the lottery using ETH, DAI, USDC or USDT
+    * @dev In case of buy with DAI, if the user send some extra decimals they will not be taken
+    * (e.g. If user send 10.1 DAI the contract just take 10 DAI). In case of other cryptos (ETH,
+    * USDC and USDT), the amount is swapped for DAI (the ETH is swapped using Uniswap. The USDC
+    * and USDT are swappeds using Curve) and the extra decimals results of the swap are refunded
+    * to the sender (i.e. If results 10.1561 DAI from a swap, 0.1561 DAI are refunded to the sender)
+    */ 
     function buyTickets(string memory _crypto) external payable{
         require(lotteryInCourse, "There is no lottery in progress");
         uint256 funds;
@@ -216,6 +271,10 @@ contract TinyLottery is OwnableUpgradeable {
 
     }
 
+    /**
+    * @notice Invest the funds of the current lottery once two days have passed since the start
+    * @dev Mint cDAI tokens for invest in Compound pools
+    */
     function invest() external onlyOwner {
         require(lotteryInCourse, "There is no lottery in progress");
         require(block.timestamp > lotteries[currentLottery].initDate.add(172800), "Cannot invest yet");
@@ -224,6 +283,12 @@ contract TinyLottery is OwnableUpgradeable {
         emit FundsInvested(cDAI.balanceOf(address(this)));
     }
 
+    /**
+    * @notice Choose a winner using a random number from chainlink and send the reward to the winner
+    * @dev Recover the DAI investeds in Compound and the interest is the reward. The winner ticket is
+    * between 1 and the amount of funds of the lottery. Transfer the interest to the winner and the fee
+    * recipient and set LotteryInCourse control variable to false
+    */
     function chooseWinner() external onlyOwner {
         require(lotteryInCourse, "There is no lottery in progress");
         require(block.timestamp > lotteries[currentLottery].initDate.add(604800), "Cannot choose a winner yet");
@@ -250,7 +315,11 @@ contract TinyLottery is OwnableUpgradeable {
         DAI.transferFrom(address(this), feeRecipient, interestEarned*fee/100);
         lotteryInCourse = false;
     }
-
+    
+    /**
+    * @notice Users can claim his tokens from past lotteries with this function
+    * @dev Only the participant can claim the tokens and he claim exactly that he invest
+    */
     function claimTokens(uint256 lotteryID, uint256 userID) external {
         require(lotteryID < currentLottery || (lotteryID == currentLottery && lotteryInCourse == false), "Invalid lottery");
         require(users[lotteryID][userID].addr == msg.sender, "Only the user can claim theirs tokens");
@@ -274,6 +343,11 @@ contract TinyLottery is OwnableUpgradeable {
         fee = _fee;
     }
 
+    /**
+    * @notice Control function to manage the period of purchase for the current lottery
+    * @dev Return a boolean depending on the time of the lottery. If two days has been
+    * passed since the lottery start returns false, else return true
+    */
     function _isPurchasePeriod() internal view returns(bool) {
         if(lotteries[currentLottery].initDate.add(172800) > block.timestamp){
             return true;
@@ -282,7 +356,8 @@ contract TinyLottery is OwnableUpgradeable {
         }
     }
 
-    // GETTERS
+    // ========== GETTERS ========== //
+    // Getters for testing
     
     function getLottery(uint lotteryID) external view returns(Lottery memory) {
         require(lotteryID <= currentLottery+1, "Invalid lottery ID");
