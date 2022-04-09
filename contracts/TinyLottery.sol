@@ -8,6 +8,7 @@ import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import "./CurveInterface.sol";
 import "./RandomNumberConsumer.sol";
 import "./CTokenInterface.sol";
+import "hardhat/console.sol";
 
 contract TinyLottery is OwnableUpgradeable {
     using SafeMath for uint256;
@@ -114,11 +115,22 @@ contract TinyLottery is OwnableUpgradeable {
 
     function createLottery() external onlyOwner {
         require(!lotteryInCourse, "There is a lottery in progress");
-        Lottery memory newLottery;
-        newLottery.initDate = block.timestamp;
-        lotteries.push(newLottery);
-        currentLottery = currentLottery.add(1);
-        lotteryInCourse = true;
+        if(lotteries.length == 0){
+            Lottery memory firstLottery;
+            firstLottery.initDate = block.timestamp;
+            lotteries.push(firstLottery);
+            Lottery memory secondLottery;
+            secondLottery.initDate = block.timestamp + (604800);
+            lotteries.push(secondLottery);
+            currentLottery = 0;
+            lotteryInCourse = true;
+        }else{
+            Lottery memory newLottery;
+            newLottery.initDate = block.timestamp + (604800);
+            lotteries.push(newLottery);
+            currentLottery = lotteries.length-2;
+            lotteryInCourse = true;
+        }
     }
 
     function buyTickets(string memory _crypto) external payable{
@@ -127,7 +139,7 @@ contract TinyLottery is OwnableUpgradeable {
         uint256 result;
         User memory newUser;
         uint aux;
-        if(_isPurchasePeriod()){
+        if(!_isPurchasePeriod()){
             aux = 1;
         }
         if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("DAI"))){
@@ -139,7 +151,7 @@ contract TinyLottery is OwnableUpgradeable {
             newUser.funds = funds;
             users[currentLottery + aux].push(newUser);
             lotteries[currentLottery + aux].funds = lotteries[currentLottery + aux].funds.add(funds);
-            emit TicketsBought(funds, (currentLottery + aux), users[currentLottery + aux].length, msg.sender);
+            emit TicketsBought(funds, (currentLottery + aux), users[currentLottery + aux].length-1, msg.sender);
         }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("ETH"))){
             require(msg.value > 0, "Insufficient ETH");
             uint amount; uint amountOut;
@@ -165,7 +177,7 @@ contract TinyLottery is OwnableUpgradeable {
             newUser.funds = funds;
             users[currentLottery + aux].push(newUser);
             lotteries[currentLottery + aux].funds = lotteries[currentLottery + aux].funds.add(funds);
-            emit TicketsBought(funds, (currentLottery + aux), users[currentLottery + aux].length, msg.sender);
+            emit TicketsBought(funds, (currentLottery + aux), users[currentLottery + aux].length-1, msg.sender);
 
         }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("USDC"))){
             funds = USDC.allowance(msg.sender, address(this));
@@ -178,7 +190,7 @@ contract TinyLottery is OwnableUpgradeable {
             newUser.funds = result.div(10**18).mul(10**18);
             users[currentLottery + aux].push(newUser);
             lotteries[currentLottery + aux].funds = lotteries[currentLottery + aux].funds.add(newUser.funds);
-            emit TicketsBought(funds, (currentLottery + aux), users[currentLottery + aux].length, msg.sender);
+            emit TicketsBought(funds, (currentLottery + aux), users[currentLottery + aux].length-1, msg.sender);
             
         }else if(keccak256(abi.encodePacked(_crypto)) == keccak256(abi.encodePacked("USDT"))){
             funds = USDT.allowance(msg.sender, address(this));
@@ -191,7 +203,7 @@ contract TinyLottery is OwnableUpgradeable {
             newUser.funds = result.div(10**18).mul(10**18);
             users[currentLottery + aux].push(newUser);
             lotteries[currentLottery + aux].funds = lotteries[currentLottery + aux].funds.add(newUser.funds);
-            emit TicketsBought(funds, (currentLottery + aux), users[currentLottery + aux].length, msg.sender);
+            emit TicketsBought(funds, (currentLottery + aux), users[currentLottery + aux].length-1, msg.sender);
 
         }else{
             revert("That Token is not accepted in this lottery");
@@ -231,11 +243,10 @@ contract TinyLottery is OwnableUpgradeable {
         DAI.transferFrom(address(this), winner, interestEarned*(100 - fee)/100);
         DAI.transferFrom(address(this), feeRecipient, interestEarned*fee/100);
         lotteryInCourse = false;
-        currentLottery = currentLottery.add(1);
     }
 
     function claimTokens(uint256 lotteryID, uint256 userID) external {
-        require(lotteryID < currentLottery, "Invalid lottery");
+        require(lotteryID < currentLottery || (lotteryID == currentLottery && lotteryInCourse == false), "Invalid lottery");
         require(users[lotteryID][userID].addr == msg.sender, "Only the user can claim theirs tokens");
         DAI.transferFrom(address(this), msg.sender, users[lotteryID][userID].funds);
         emit TokensClaimed(users[lotteryID][userID].funds, lotteryID);
@@ -263,5 +274,18 @@ contract TinyLottery is OwnableUpgradeable {
         }else{
             return false;
         }
+    }
+
+    // GETTERS
+    
+    function getLottery(uint lotteryID) external view returns(Lottery memory) {
+        require(lotteryID <= currentLottery, "Invalid lottery ID");
+        return lotteries[lotteryID];
+    }
+
+    function getUser(uint lotteryID, uint userID) external view returns(User memory){
+        require(lotteryID <= currentLottery, "Invalid lottery ID");
+        require(userID < users[lotteryID].length, "Invalid user ID");
+        return users[lotteryID][userID];
     }
 }
