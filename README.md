@@ -1,4 +1,4 @@
-# Tiny Swapper
+# No Loss Lottery
 
 Basic no loss lottery to buy tickets with ETH, DAI, USDC and USDT.
 
